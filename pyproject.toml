@@ -1,0 +1,29 @@
+[project]
+name = "pascal-python-quickstart"
+version = "0.1.0"
+description = "Small, copyable Python quickstart for Pascal's public API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "certifi>=2024.2.2",
+    "pynacl>=1.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31.0",
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.basedpyright]
+include = ["pascal_quickstart", "examples", "tests"]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
