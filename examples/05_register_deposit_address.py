@@ -13,9 +13,10 @@ def main() -> None:
 
     This is the first owner-wallet step for agents that already have a Solana
     private key. The script derives the owner public key, signs Pascal's
-    documented register_deposit_address payload, prints the exact request JSON,
-    and posts it only when --send is present. The response includes the deposit
-    address to fund before registering a trading key.
+    documented register_deposit_address payload, signs the invite code when one
+    is supplied, prints the exact request JSON, and posts it only when --send is
+    present. The response includes the deposit address to fund before
+    registering a trading key.
     """
     parser = argparse.ArgumentParser(description="Register a Pascal deposit address.")
     parser.add_argument("owner_private_key", help="Owner wallet private key.")

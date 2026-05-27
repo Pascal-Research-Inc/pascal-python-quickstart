@@ -92,6 +92,7 @@ posting.
 1. Register the account's deposit address with an invite code.
 
 Invite codes look like `4PHPW-S4BM2-U9MS6-KP2JF`.
+When supplied, the invite code is included in the signed registration payload.
 
 ```sh
 uv run python examples/05_register_deposit_address.py '<owner-private-key>' --invite-code '<invite-code>' --send

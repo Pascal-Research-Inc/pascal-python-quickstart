@@ -7,6 +7,7 @@ from pascal_quickstart.signing import (
     create_trading_key_message,
     place_order_message,
     register_deposit_address_message,
+    signed_register_deposit_address_request,
 )
 
 OWNER_PRIVATE_KEY_HEX = "07" * 32
@@ -52,6 +53,17 @@ REGISTER_DEPOSIT_ADDRESS_MESSAGE_UTF8 = (
 )
 REGISTER_DEPOSIT_ADDRESS_SIGNATURE = (
     "SmycN1kHAggVjooQvGSKCkqUMtk17h5ZZZudtoqBVGvjQyZxEutXTHVG7bZEYurfT4jmrBc7wFFW6pL9yvJbyMc"
+)
+INVITE_CODE = "4PHPW-S4BM2-U9MS6-KP2JF"
+REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_MESSAGE_UTF8 = (
+    '["register_deposit_address","GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
+    "1,2,5000,1731536000000,"
+    '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
+    '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
+    '"4PHPW-S4BM2-U9MS6-KP2JF"]'
+)
+REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_SIGNATURE = (
+    "29BRbScDeWq6qkSYowRwfd1cx4VUZMisKPJaiWWrQdvrMvhoFQ6w4hRiVUsndahEMA2DXhHF8Qjwz1STbvFDNQWr"
 )
 
 
@@ -135,3 +147,36 @@ def test_register_deposit_address_signing_vector() -> None:
 
     assert message.decode() == REGISTER_DEPOSIT_ADDRESS_MESSAGE_UTF8
     assert sign_message_base58(OWNER_PRIVATE_KEY_HEX, message) == REGISTER_DEPOSIT_ADDRESS_SIGNATURE
+
+
+def test_register_deposit_address_with_invite_code_signs_invite_code() -> None:
+    auth = RequestAuthInputs(
+        deployment_id=2,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        signer_public_key=OWNER_PUBLIC_KEY,
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+
+    message = register_deposit_address_message(auth=auth, invite_code=INVITE_CODE)
+
+    assert message.decode() == REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_MESSAGE_UTF8
+    assert (
+        sign_message_base58(OWNER_PRIVATE_KEY_HEX, message)
+        == REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_SIGNATURE
+    )
+
+
+def test_signed_register_deposit_address_request_signs_invite_code() -> None:
+    request = signed_register_deposit_address_request(
+        deployment_id=2,
+        owner_private_key=OWNER_PRIVATE_KEY_HEX,
+        invite_code=INVITE_CODE,
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+
+    assert list(request) == ["owner", "invite_code", "auth"]
+    assert request["owner"] == OWNER_PUBLIC_KEY
+    assert request["invite_code"] == INVITE_CODE
+    assert request["auth"]["signature"] == REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_SIGNATURE

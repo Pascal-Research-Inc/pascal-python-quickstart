@@ -189,7 +189,9 @@ def create_trading_key_message(
     return json.dumps(fields, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-def register_deposit_address_message(*, auth: RequestAuthInputs) -> bytes:
+def register_deposit_address_message(
+    *, auth: RequestAuthInputs, invite_code: str | None = None
+) -> bytes:
     """Return the exact UTF-8 JSON array signed for deposit-address registration."""
     if auth.owner_public_key != auth.signer_public_key:
         raise ValueError("Wallet-signed requests require signer_public_key == owner_public_key")
@@ -210,6 +212,8 @@ def register_deposit_address_message(*, auth: RequestAuthInputs) -> bytes:
         auth.owner_public_key,
         auth.signer_public_key,
     ]
+    if invite_code is not None:
+        fields.append(invite_code)
     return json.dumps(fields, separators=(",", ":"), ensure_ascii=False).encode()
 
 
@@ -347,13 +351,12 @@ def signed_register_deposit_address_request(
         client_ts_ms=client_ts_ms if client_ts_ms is not None else now_ms(),
         recv_window_ms=recv_window_ms,
     )
-    message = register_deposit_address_message(auth=auth)
-    request: dict[str, Any] = {
-        "owner": owner_public_key,
-        "auth": auth_json(auth, sign_message_base58(owner_private_key, message)),
-    }
+    message = register_deposit_address_message(auth=auth, invite_code=invite_code)
+    signature = sign_message_base58(owner_private_key, message)
+    request: dict[str, Any] = {"owner": owner_public_key}
     if invite_code is not None:
         request["invite_code"] = invite_code
+    request["auth"] = auth_json(auth, signature)
     return request
 
 
