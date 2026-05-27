@@ -53,6 +53,16 @@ def get_account_state(environment: PascalEnvironment, owner_public_key: str) -> 
     return data
 
 
+def get_trading_keys(environment: PascalEnvironment, owner_public_key: str) -> list[dict[str, Any]]:
+    data = unwrap_envelope(
+        get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/trading-keys"),
+        context="trading keys",
+    )
+    if not isinstance(data, list):
+        raise TypeError("trading keys response data must be an array")
+    return [item for item in data if isinstance(item, dict)]
+
+
 def choose_symbol(environment: PascalEnvironment) -> str:
     markets = list_markets(environment)
     if not markets:
