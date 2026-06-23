@@ -15,7 +15,7 @@ OWNER_PUBLIC_KEY = "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB"
 TRADING_PRIVATE_KEY_HEX = "08" * 32
 TRADING_PUBLIC_KEY = "2KW2XRd9kwqet15Aha2oK3tYvd3nWbTFH1MBiRAv1BE1"
 PLACE_ORDER_MESSAGE_HEX = (
-    "01010200881300000094962793010000"
+    "01010300881300000094962793010000"
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
     "0a0000000000000070640800000000002a000000000000002b00000000000000"
@@ -25,45 +25,45 @@ PLACE_ORDER_MESSAGE_HEX = (
     "5f1bc17be1dd1cb3ccf53ce3000000010300000000000000"
 )
 PLACE_ORDER_SIGNATURE = (
-    "32q4js875BeFhj23TEm6u7CrGW1U9r7esuSAURZNUTCGcRm7Mkr6UN6kwCuvVusfWhGqoFoGcGSa7hTk8Qvwsud3"
+    "47VDS7j5Dn2Mn9ZFYM3d3He9i7N2sMrdZ9fXdmDRSwTcXVGFtSL8eifUgadxEzgmDK53q8RpFru3LgmdzaRqrson"
 )
 CANCEL_ORDER_MESSAGE_HEX = (
-    "01020200881300000094962793010000"
+    "01020300881300000094962793010000"
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
     "00000000000000002a00000000000000"
 )
 CANCEL_ORDER_SIGNATURE = (
-    "3WxYm8hw7esTpRLxjVRkY3HssMbp6t6s1HykHDagpDnnZH88Re62k6qLNZWFzDg1CM5x3DH2csnWMUqbzH8fRiZB"
+    "591YziUjZzro24mamxgRrSDdYD71NpsDBmU4UGSyrBYbFiWzYaLjR9he1P5DP8djMKMJzHTsZzwRAagvLqgtiXnc"
 )
 CREATE_TRADING_KEY_MESSAGE_UTF8 = (
     '["create_trading_key","api-doc-key","2KW2XRd9kwqet15Aha2oK3tYvd3nWbTFH1MBiRAv1BE1",'
-    "1732140800000,1,2,5000,1731536000000,"
+    "1732140800000,1,3,5000,1731536000000,"
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB"]'
 )
 CREATE_TRADING_KEY_SIGNATURE = (
-    "27ZXesvQMpSKiQDMTZQ9XXyy1Wvv853TPzVVQKxHV6dcZhgjhzzncbes3FmCrRJMFwHc3b84JnK87pNHvUUz8NQT"
+    "kyc2KdqPTeEWqoK3pXR2rgPUiK4zXg9QdQffPUWk8eALpFy7uaHBEsASt7RQyVzDeubHVsPqQAHXrt8m8KZ78Ep"
 )
 REGISTER_DEPOSIT_ADDRESS_MESSAGE_UTF8 = (
     '["register_deposit_address","GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
-    "1,2,5000,1731536000000,"
+    "1,3,5000,1731536000000,"
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB"]'
 )
 REGISTER_DEPOSIT_ADDRESS_SIGNATURE = (
-    "SmycN1kHAggVjooQvGSKCkqUMtk17h5ZZZudtoqBVGvjQyZxEutXTHVG7bZEYurfT4jmrBc7wFFW6pL9yvJbyMc"
+    "5xWT1auD2tHfqw3arxJqQC4XdZVXYMcT382wCLAHPdequru7LZJ9Dsb8umpvCGGJV2h23ZgP2JwjBqgpi4KZHfCq"
 )
 INVITE_CODE = "4PHPW-S4BM2-U9MS6-KP2JF"
 REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_MESSAGE_UTF8 = (
     '["register_deposit_address","GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
-    "1,2,5000,1731536000000,"
+    "1,3,5000,1731536000000,"
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
     '"GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",'
     '"4PHPW-S4BM2-U9MS6-KP2JF"]'
 )
 REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_SIGNATURE = (
-    "29BRbScDeWq6qkSYowRwfd1cx4VUZMisKPJaiWWrQdvrMvhoFQ6w4hRiVUsndahEMA2DXhHF8Qjwz1STbvFDNQWr"
+    "3y43tLaBWdQyxkj7BAbbSEmGfd6Fu3Xop5ATyWcLiC4XYFgNJSmoKXmyC8Qnu7oRUzAnEycmfSLzdyAV5L3cxecc"
 )
 
 
@@ -74,7 +74,7 @@ def test_public_key_derivation_matches_docs_vectors() -> None:
 
 def test_place_order_signing_vector() -> None:
     auth = RequestAuthInputs(
-        deployment_id=2,
+        deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
         signer_public_key=TRADING_PUBLIC_KEY,
         client_ts_ms=1731536000000,
@@ -101,7 +101,7 @@ def test_place_order_signing_vector() -> None:
 
 def test_cancel_order_signing_vector() -> None:
     auth = RequestAuthInputs(
-        deployment_id=2,
+        deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
         signer_public_key=TRADING_PUBLIC_KEY,
         client_ts_ms=1731536000000,
@@ -116,7 +116,7 @@ def test_cancel_order_signing_vector() -> None:
 
 def test_create_trading_key_signing_vector() -> None:
     auth = RequestAuthInputs(
-        deployment_id=2,
+        deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
         signer_public_key=OWNER_PUBLIC_KEY,
         client_ts_ms=1731536000000,
@@ -136,7 +136,7 @@ def test_create_trading_key_signing_vector() -> None:
 
 def test_register_deposit_address_signing_vector() -> None:
     auth = RequestAuthInputs(
-        deployment_id=2,
+        deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
         signer_public_key=OWNER_PUBLIC_KEY,
         client_ts_ms=1731536000000,
@@ -151,7 +151,7 @@ def test_register_deposit_address_signing_vector() -> None:
 
 def test_register_deposit_address_with_invite_code_signs_invite_code() -> None:
     auth = RequestAuthInputs(
-        deployment_id=2,
+        deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
         signer_public_key=OWNER_PUBLIC_KEY,
         client_ts_ms=1731536000000,
@@ -169,7 +169,7 @@ def test_register_deposit_address_with_invite_code_signs_invite_code() -> None:
 
 def test_signed_register_deposit_address_request_signs_invite_code() -> None:
     request = signed_register_deposit_address_request(
-        deployment_id=2,
+        deployment_id=3,
         owner_private_key=OWNER_PRIVATE_KEY_HEX,
         invite_code=INVITE_CODE,
         client_ts_ms=1731536000000,
