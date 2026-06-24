@@ -43,6 +43,49 @@ def get_books(environment: PascalEnvironment, symbols: list[str]) -> dict[str, A
     return books
 
 
+def list_trades(
+    environment: PascalEnvironment,
+    symbols: list[str],
+    *,
+    limit: int = 100,
+    before_cursor: str | None = None,
+    at_or_before_seq: int | str | None = None,
+) -> dict[str, Any]:
+    """Fetch one page of public trade history.
+
+    For older pages, pass the prior page's ``next_cursor`` back as
+    ``before_cursor``. There is no ``cursor`` query parameter for this endpoint.
+    """
+
+    if not symbols:
+        raise ValueError("symbols must contain at least one market symbol")
+    if len(symbols) > 30:
+        raise ValueError("trades supports at most 30 market symbols")
+    if not 1 <= limit <= 500:
+        raise ValueError("limit must be between 1 and 500")
+    if before_cursor is not None and at_or_before_seq is not None:
+        raise ValueError("Pass at most one of before_cursor or at_or_before_seq")
+
+    params = {
+        "symbols": ",".join(symbols),
+        "limit": str(limit),
+    }
+    if before_cursor is not None:
+        params["before_cursor"] = before_cursor
+    if at_or_before_seq is not None:
+        params["at_or_before_seq"] = str(at_or_before_seq)
+
+    data = unwrap_envelope(
+        get_json(f"{environment.read_base_url}/api/v1/trades", params),
+        context="trades",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("trades response data must be an object")
+    if not isinstance(data.get("items"), list):
+        raise TypeError("trades response missing items array")
+    return data
+
+
 def get_account_state(environment: PascalEnvironment, owner_public_key: str) -> dict[str, Any]:
     data = unwrap_envelope(
         get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}"),

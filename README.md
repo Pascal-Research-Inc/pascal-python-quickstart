@@ -105,6 +105,30 @@ a deposit address, waits for funding, then registers a trading key.
 configured trading key's public key and confirms it is active for the configured
 owner.
 
+- See `examples/08_trade_history_pagination.py` for a read-only example that
+pages through historical trades using the correct cursor parameter.
+
+### Trade History Pagination
+
+Historical endpoints return `data.next_cursor` in the response. To fetch the
+next older page, send that value back as `before_cursor`.
+
+```sh
+GET /api/v1/trades?symbols=ME_SEN_2026.REP&limit=5
+# response data.next_cursor = 00000000000000737841:0000000000
+
+GET /api/v1/trades?symbols=ME_SEN_2026.REP&limit=5&before_cursor=00000000000000737841:0000000000
+```
+
+Do **not** send `cursor=<next_cursor>`; `next_cursor` is the response field,
+while `before_cursor` is the query parameter for the next older page.
+
+Run the Python example:
+
+```sh
+uv run python examples/08_trade_history_pagination.py --symbol ME_SEN_2026.REP --limit 5 --pages 3
+```
+
 ## FAQ
 
 ### Troubleshooting `unauthorized_signer`
