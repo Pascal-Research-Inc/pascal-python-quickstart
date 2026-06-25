@@ -17,6 +17,7 @@ CancelBy = Literal["client_order_id", "order_id"]
 PERMIT_VERSION = 1
 PLACE_ORDER_CMD_TYPE = 1
 CANCEL_ORDER_CMD_TYPE = 2
+PYTHON_CLIENT_METADATA = 2
 CREATE_TRADING_KEY_COMMAND_TYPE = "create_trading_key"
 REGISTER_DEPOSIT_ADDRESS_COMMAND_TYPE = "register_deposit_address"
 OMITTED_REPLACE_CLIENT_ORDER_ID = (1 << 64) - 1
@@ -130,7 +131,7 @@ def place_order_message(
             fixed_symbol_bytes(symbol),
             b"\x00" * 4,
             PLACE_ORDER_OFFCHAIN_FIELDS_DIGEST,
-            b"\x00",
+            struct.pack("<B", PYTHON_CLIENT_METADATA),
             struct.pack("<BBBB", side_value, order_type_value, tif_value, flags),
             b"\x00" * 7,
         ]
@@ -146,7 +147,11 @@ def cancel_order_message(
 ) -> bytes:
     cancel_by_value = {"client_order_id": 0, "order_id": 1}[cancel_by]
     body = b"".join(
-        [struct.pack("<BB", cancel_by_value, 0), b"\x00" * 6, struct.pack("<Q", order_id)]
+        [
+            struct.pack("<BB", cancel_by_value, PYTHON_CLIENT_METADATA),
+            b"\x00" * 6,
+            struct.pack("<Q", order_id),
+        ]
     )
     return permit_header(auth, cmd_type=CANCEL_ORDER_CMD_TYPE) + body
 
@@ -288,6 +293,7 @@ def signed_place_order_request(
         "side": side,
         "price": price,
         "size": str(size),
+        "metadata": str(PYTHON_CLIENT_METADATA),
     }
     if replace_client_order_id is not None:
         request["replace_client_order_id"] = str(replace_client_order_id)
@@ -393,5 +399,6 @@ def signed_cancel_order_request(
         request = {"order_id": str(target_id)}
 
     message = cancel_order_message(auth=auth, cancel_by=cancel_by, order_id=target_id)
+    request["metadata"] = str(PYTHON_CLIENT_METADATA)
     request["auth"] = auth_json(auth, sign_message_base58(trading_private_key, message))
     return request
