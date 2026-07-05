@@ -36,6 +36,7 @@ TimeInForce = Literal["GTC", "GTT", "IOC"]
 OrderType = Literal["LIMIT", "MARKET"]
 HistoryKind = Literal["all", "fills", "transfers", "position-resolutions"]
 MAX_ORDER_BATCH_SIZE = 50
+MAX_CANCEL_BATCH_SIZE = 50
 MAX_CLIENT_ORDER_ID = (1 << 64) - 2
 MAX_U64 = (1 << 64) - 1
 ORDER_SPEC_FIELDS = {
@@ -518,13 +519,19 @@ def submit_order(config: PascalConfig, request: dict[str, Any], *, send: bool) -
     )
 
 
-def submit_cancel(config: PascalConfig, request: dict[str, Any], *, send: bool) -> None:
-    body = [request]
+def submit_cancels(
+    config: PascalConfig,
+    requests: list[dict[str, Any]],
+    *,
+    send: bool,
+    dry_run_message: str,
+) -> None:
+    body = requests
     print("Request JSON:")
     print(pretty_json(body))
     if not send:
         print()
-        print("Dry run only. Re-run with --send to post this cancel.")
+        print(dry_run_message)
         return
     response = post_json(f"{config.environment.write_base_url}/api/v1/cancels", body)
     print()
@@ -832,23 +839,93 @@ def handle_batch_orders(parser: argparse.ArgumentParser, args: argparse.Namespac
     )
 
 
-def handle_cancel_order(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if (args.client_order_id is None) == (args.order_id is None):
-        parser.error("Provide exactly one of --client-order-id or --order-id.")
+def parse_id_values(
+    values: list[list[str]] | None,
+    *,
+    name: str,
+    maximum: int,
+) -> list[int]:
+    ids: list[int] = []
+    for group in values or []:
+        for raw_value in group:
+            for item in raw_value.split(","):
+                value = item.strip()
+                if not value:
+                    continue
+                if not value.isdecimal():
+                    raise ValueError(f"{name} must contain unsigned integer ids.")
+                parsed = int(value)
+                if parsed > maximum:
+                    raise ValueError(f"{name} ids must be between 0 and {maximum}.")
+                ids.append(parsed)
+    return ids
 
+
+def signed_cancel_requests_from_ids(
+    config: PascalConfig,
+    *,
+    client_order_ids: list[int],
+    order_ids: list[int],
+    recv_window_ms: int = 5000,
+) -> list[dict[str, Any]]:
+    total = len(client_order_ids) + len(order_ids)
+    if total == 0:
+        raise ValueError("Provide at least one --client-order-id or --order-id.")
+    if total > MAX_CANCEL_BATCH_SIZE:
+        raise ValueError(f"Cancel batches may contain at most {MAX_CANCEL_BATCH_SIZE} ids.")
+    if len(set(client_order_ids)) != len(client_order_ids):
+        raise ValueError("Duplicate --client-order-id value in cancel batch.")
+    if len(set(order_ids)) != len(order_ids):
+        raise ValueError("Duplicate --order-id value in cancel batch.")
+
+    auth_ts_ms = now_ms()
+    requests: list[dict[str, Any]] = []
+    for client_order_id_value in client_order_ids:
+        requests.append(
+            signed_cancel_order_request(
+                deployment_id=config.environment.deployment_id,
+                owner_public_key=config.owner_public_key,
+                trading_private_key=config.trading_private_key,
+                client_order_id=client_order_id_value,
+                client_ts_ms=auth_ts_ms,
+                recv_window_ms=recv_window_ms,
+            )
+        )
+    for order_id_value in order_ids:
+        requests.append(
+            signed_cancel_order_request(
+                deployment_id=config.environment.deployment_id,
+                owner_public_key=config.owner_public_key,
+                trading_private_key=config.trading_private_key,
+                order_id=order_id_value,
+                client_ts_ms=auth_ts_ms,
+                recv_window_ms=recv_window_ms,
+            )
+        )
+    return requests
+
+
+def handle_cancel_order(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     config = load_trading_config(parser, args)
     try:
-        request = signed_cancel_order_request(
-            deployment_id=config.environment.deployment_id,
-            owner_public_key=config.owner_public_key,
-            trading_private_key=config.trading_private_key,
-            client_order_id=args.client_order_id,
-            order_id=args.order_id,
+        requests = signed_cancel_requests_from_ids(
+            config,
+            client_order_ids=parse_id_values(
+                args.client_order_id,
+                name="--client-order-id",
+                maximum=MAX_CLIENT_ORDER_ID,
+            ),
+            order_ids=parse_id_values(args.order_id, name="--order-id", maximum=MAX_U64),
             recv_window_ms=args.recv_window_ms,
         )
     except (KeyParseError, ValueError) as exc:
         parser.error(str(exc))
-    submit_cancel(config, request, send=args.send)
+    submit_cancels(
+        config,
+        requests,
+        send=args.send,
+        dry_run_message="Dry run only. Re-run with --send to post this cancel batch.",
+    )
 
 
 def build_markets_parser() -> argparse.ArgumentParser:
@@ -1063,17 +1140,37 @@ def build_batch_orders_parser() -> argparse.ArgumentParser:
 def build_cancel_order_parser() -> argparse.ArgumentParser:
     parser = command_parser(
         "cancel-order",
-        "Build and optionally send a signed order cancel.",
+        "Build and optionally send one or more signed order cancels.",
         [
             "cli cancel-order --client-order-id 1783261000000",
+            "cli cancel-order --client-order-id 1783261000000 1783261000001",
+            "cli cancel-order --client-order-id 1783261000000,1783261000001",
             "cli cancel-order --order-id 185499743",
             "cli cancel-order --client-order-id 1783261000000 --send",
         ],
     )
     add_env(parser)
     parser.add_argument("--send", action="store_true", help="Actually post the write request.")
-    parser.add_argument("--client-order-id", type=int, help="Cancel by client-assigned order id.")
-    parser.add_argument("--order-id", type=int, help="Cancel by exchange-assigned order id.")
+    parser.add_argument(
+        "--client-order-id",
+        action="append",
+        nargs="+",
+        metavar="ID",
+        help=(
+            "Cancel by client-assigned order id. May be repeated, comma-delimited, "
+            "or followed by multiple ids."
+        ),
+    )
+    parser.add_argument(
+        "--order-id",
+        action="append",
+        nargs="+",
+        metavar="ID",
+        help=(
+            "Cancel by exchange-assigned order id. May be repeated, comma-delimited, "
+            "or followed by multiple ids."
+        ),
+    )
     parser.add_argument("--recv-window-ms", type=int, default=5000)
     return parser
 

@@ -124,7 +124,7 @@ response.
 ./cli limit-order --symbol ME_SEN_2026.REP --side BID --price 0.450000 --size 1
 ./cli market-order --symbol ME_SEN_2026.REP --side BID --size 1
 ./cli batch-orders orders.json
-./cli cancel-order --client-order-id 1783261000000
+./cli cancel-order --client-order-id 1783261000000 1783261000001
 ```
 
 Batch order input is a JSON array of unsigned order specs. Omit

@@ -139,3 +139,36 @@ def test_signed_order_requests_from_specs_rejects_duplicate_client_ids() -> None
             specs,
             client_ts_ms=1731536000000,
         )
+
+
+def test_parse_id_values_accepts_repeated_and_comma_delimited_ids() -> None:
+    assert cli.parse_id_values(
+        [["42", "43,44"], ["45"]],
+        name="--client-order-id",
+        maximum=100,
+    ) == [42, 43, 44, 45]
+
+
+def test_signed_cancel_requests_from_ids_builds_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = PascalConfig(ENVIRONMENT, OWNER_PUBLIC_KEY, TRADING_PRIVATE_KEY_HEX)
+    monkeypatch.setattr(cli, "now_ms", lambda: 1731536000000)
+
+    requests = cli.signed_cancel_requests_from_ids(
+        config,
+        client_order_ids=[42, 43],
+        order_ids=[185499743],
+    )
+
+    assert len(requests) == 3
+    assert requests[0]["client_order_id"] == "42"
+    assert requests[1]["client_order_id"] == "43"
+    assert requests[2]["order_id"] == "185499743"
+    assert {request["metadata"] for request in requests} == {"2"}
+    assert {request["auth"]["client_ts_ms"] for request in requests} == {"1731536000000"}
+
+
+def test_signed_cancel_requests_from_ids_rejects_empty_batch() -> None:
+    config = PascalConfig(ENVIRONMENT, OWNER_PUBLIC_KEY, TRADING_PRIVATE_KEY_HEX)
+
+    with pytest.raises(ValueError, match="at least one"):
+        cli.signed_cancel_requests_from_ids(config, client_order_ids=[], order_ids=[])
