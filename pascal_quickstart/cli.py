@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any, Literal, cast
 
 from pascal_quickstart.config import PascalConfig, PascalEnvironment, load_config
 from pascal_quickstart.crypto import KeyParseError
@@ -23,13 +25,33 @@ from pascal_quickstart.market_data import (
 )
 from pascal_quickstart.signing import (
     now_ms,
+    price_to_micro_dollars,
     signed_cancel_order_request,
     signed_place_order_request,
 )
 
 Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], None]
 Side = Literal["BID", "ASK"]
+TimeInForce = Literal["GTC", "GTT", "IOC"]
+OrderType = Literal["LIMIT", "MARKET"]
 HistoryKind = Literal["all", "fills", "transfers", "position-resolutions"]
+MAX_ORDER_BATCH_SIZE = 50
+MAX_CLIENT_ORDER_ID = (1 << 64) - 2
+MAX_U64 = (1 << 64) - 1
+ORDER_SPEC_FIELDS = {
+    "allow_missing_replace",
+    "client_order_id",
+    "expires_ts_ms",
+    "post_only",
+    "price",
+    "reduce_only",
+    "replace_client_order_id",
+    "side",
+    "size",
+    "symbol",
+    "tif",
+    "type",
+}
 
 
 @dataclass(frozen=True)
@@ -186,6 +208,8 @@ def best_level(book: dict[str, Any], side: str) -> tuple[str | None, str | None]
 
 
 def handle_markets(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be at least 1")
     try:
         config = load_config(args.env, require_keys=False)
         markets = list_markets(config.environment, strict=args.strict)
@@ -465,18 +489,33 @@ def handle_pnl(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Non
     )
 
 
-def submit_order(config: PascalConfig, request: dict[str, Any], *, send: bool) -> None:
-    body = [request]
+def submit_orders(
+    config: PascalConfig,
+    requests: list[dict[str, Any]],
+    *,
+    send: bool,
+    dry_run_message: str,
+) -> None:
+    body = requests
     print("Request JSON:")
     print(pretty_json(body))
     if not send:
         print()
-        print("Dry run only. Re-run with --send to post this order.")
+        print(dry_run_message)
         return
     response = post_json(f"{config.environment.write_base_url}/api/v1/orders", body)
     print()
     print("Response JSON:")
     print(pretty_json(response))
+
+
+def submit_order(config: PascalConfig, request: dict[str, Any], *, send: bool) -> None:
+    submit_orders(
+        config,
+        [request],
+        send=send,
+        dry_run_message="Dry run only. Re-run with --send to post this order.",
+    )
 
 
 def submit_cancel(config: PascalConfig, request: dict[str, Any], *, send: bool) -> None:
@@ -531,6 +570,225 @@ def market_price(side: Side, explicit_price: str | None) -> str:
     return "1.000000" if side == "BID" else "0.010000"
 
 
+def format_micro_price(micro_price: int) -> str:
+    return f"{micro_price // 1_000_000}.{micro_price % 1_000_000:06d}"
+
+
+def order_field(index: int, name: str) -> str:
+    return f"orders[{index}].{name}"
+
+
+def read_order_specs(source: str) -> list[dict[str, Any]]:
+    if source == "-":
+        text = sys.stdin.read()
+    elif source.lstrip().startswith("["):
+        text = source
+    else:
+        try:
+            text = Path(source).read_text()
+        except OSError as exc:
+            raise ValueError(f"Could not read order JSON from {source!r}: {exc}") from exc
+
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Order input must be valid JSON: {exc}") from exc
+
+    if not isinstance(raw, list):
+        raise ValueError("Order input must be a JSON array.")
+    if not raw:
+        raise ValueError("Order input must contain at least one order.")
+    if len(raw) > MAX_ORDER_BATCH_SIZE:
+        raise ValueError(f"Order input may contain at most {MAX_ORDER_BATCH_SIZE} orders.")
+
+    specs: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"orders[{index}] must be a JSON object.")
+        specs.append(item)
+    return specs
+
+
+def require_string(spec: dict[str, Any], index: int, name: str) -> str:
+    value = spec.get(name)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{order_field(index, name)} must be a non-empty string.")
+    return value
+
+
+def choice_field(
+    spec: dict[str, Any],
+    index: int,
+    name: str,
+    choices: tuple[str, ...],
+    default: str | None = None,
+) -> str:
+    value = spec.get(name, default)
+    if value is None:
+        raise ValueError(f"{order_field(index, name)} must be one of: {', '.join(choices)}.")
+    if not isinstance(value, str):
+        raise ValueError(f"{order_field(index, name)} must be one of: {', '.join(choices)}.")
+    normalized = value.upper()
+    if normalized not in choices:
+        raise ValueError(f"{order_field(index, name)} must be one of: {', '.join(choices)}.")
+    return normalized
+
+
+def bool_field(spec: dict[str, Any], index: int, name: str, *, default: bool = False) -> bool:
+    value = spec.get(name, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{order_field(index, name)} must be true or false.")
+    return value
+
+
+def int_field(
+    spec: dict[str, Any],
+    index: int,
+    name: str,
+    *,
+    required: bool,
+    default: int | None = None,
+    minimum: int = 0,
+    maximum: int = MAX_U64,
+) -> int | None:
+    value = spec.get(name, default)
+    if value is None:
+        if required:
+            raise ValueError(f"{order_field(index, name)} is required.")
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{order_field(index, name)} must be an integer.")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.isdecimal():
+        parsed = int(value)
+    else:
+        raise ValueError(f"{order_field(index, name)} must be an integer.")
+    if parsed < minimum or parsed > maximum:
+        raise ValueError(f"{order_field(index, name)} must be between {minimum} and {maximum}.")
+    return parsed
+
+
+def price_field(spec: dict[str, Any], index: int) -> str | None:
+    value = spec.get("price")
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        raise ValueError(f"{order_field(index, 'price')} must be a decimal string.")
+    try:
+        micro_price = price_to_micro_dollars(str(value))
+    except ValueError as exc:
+        raise ValueError(f"{order_field(index, 'price')}: {exc}") from exc
+    return format_micro_price(micro_price)
+
+
+def signed_order_requests_from_specs(
+    config: PascalConfig,
+    specs: list[dict[str, Any]],
+    *,
+    base_client_order_id: int | None = None,
+    client_ts_ms: int | None = None,
+    recv_window_ms: int = 5000,
+) -> list[dict[str, Any]]:
+    if len(specs) > MAX_ORDER_BATCH_SIZE:
+        raise ValueError(f"Order input may contain at most {MAX_ORDER_BATCH_SIZE} orders.")
+    auth_ts_ms = client_ts_ms if client_ts_ms is not None else now_ms()
+    generated_client_order_id = (
+        base_client_order_id if base_client_order_id is not None else auth_ts_ms
+    )
+    requests: list[dict[str, Any]] = []
+    seen_client_order_ids: set[int] = set()
+
+    for index, spec in enumerate(specs):
+        unknown_fields = sorted(set(spec) - ORDER_SPEC_FIELDS)
+        if unknown_fields:
+            joined = ", ".join(unknown_fields)
+            raise ValueError(f"orders[{index}] has unsupported field(s): {joined}.")
+
+        order_type = cast(
+            OrderType, choice_field(spec, index, "type", ("LIMIT", "MARKET"), "LIMIT")
+        )
+        side = cast(Side, choice_field(spec, index, "side", ("BID", "ASK")))
+        tif_default = "IOC" if order_type == "MARKET" else "GTC"
+        tif = cast(
+            TimeInForce, choice_field(spec, index, "tif", ("GTC", "GTT", "IOC"), tif_default)
+        )
+        if order_type == "MARKET" and tif != "IOC":
+            raise ValueError(f"{order_field(index, 'tif')} must be IOC for MARKET orders.")
+
+        default_client_id = generated_client_order_id + index
+        if spec.get("client_order_id") is None:
+            if default_client_id < 0 or default_client_id > MAX_CLIENT_ORDER_ID:
+                raise ValueError(
+                    f"generated {order_field(index, 'client_order_id')} must be between "
+                    f"0 and {MAX_CLIENT_ORDER_ID}."
+                )
+            client_id = default_client_id
+        else:
+            client_id = int_field(
+                spec,
+                index,
+                "client_order_id",
+                required=True,
+                maximum=MAX_CLIENT_ORDER_ID,
+            )
+            if client_id is None:
+                raise ValueError(f"{order_field(index, 'client_order_id')} is required.")
+        if client_id in seen_client_order_ids:
+            raise ValueError(f"Duplicate client_order_id in batch: {client_id}.")
+        seen_client_order_ids.add(client_id)
+
+        replace_client_order_id = int_field(
+            spec,
+            index,
+            "replace_client_order_id",
+            required=False,
+            maximum=MAX_CLIENT_ORDER_ID,
+        )
+        expires_ts_ms = int_field(spec, index, "expires_ts_ms", required=False)
+        size = int_field(spec, index, "size", required=True, minimum=1)
+        if size is None:
+            raise ValueError(f"{order_field(index, 'size')} is required.")
+        post_only = bool_field(spec, index, "post_only")
+        reduce_only = bool_field(spec, index, "reduce_only")
+        allow_missing_replace = bool_field(spec, index, "allow_missing_replace")
+        if allow_missing_replace and replace_client_order_id is None:
+            raise ValueError(
+                f"{order_field(index, 'allow_missing_replace')} requires "
+                f"{order_field(index, 'replace_client_order_id')}."
+            )
+
+        price = price_field(spec, index)
+        if price is None:
+            if order_type != "MARKET":
+                raise ValueError(f"{order_field(index, 'price')} is required for LIMIT orders.")
+            price = market_price(side, None)
+
+        requests.append(
+            signed_place_order_request(
+                deployment_id=config.environment.deployment_id,
+                owner_public_key=config.owner_public_key,
+                trading_private_key=config.trading_private_key,
+                client_order_id=client_id,
+                replace_client_order_id=replace_client_order_id,
+                symbol=require_string(spec, index, "symbol"),
+                side=side,
+                price=price,
+                size=size,
+                tif=tif,
+                expires_ts_ms=expires_ts_ms,
+                post_only=post_only,
+                reduce_only=reduce_only,
+                allow_missing_replace=allow_missing_replace,
+                order_type=order_type,
+                client_ts_ms=auth_ts_ms,
+                recv_window_ms=recv_window_ms,
+            )
+        )
+
+    return requests
+
+
 def handle_market_order(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     config = load_trading_config(parser, args)
     try:
@@ -552,6 +810,26 @@ def handle_market_order(parser: argparse.ArgumentParser, args: argparse.Namespac
     except (KeyParseError, ValueError) as exc:
         parser.error(str(exc))
     submit_order(config, request, send=args.send)
+
+
+def handle_batch_orders(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    config = load_trading_config(parser, args)
+    try:
+        specs = read_order_specs(args.orders_json)
+        requests = signed_order_requests_from_specs(
+            config,
+            specs,
+            base_client_order_id=args.base_client_order_id,
+            recv_window_ms=args.recv_window_ms,
+        )
+    except (KeyParseError, ValueError) as exc:
+        parser.error(str(exc))
+    submit_orders(
+        config,
+        requests,
+        send=args.send,
+        dry_run_message="Dry run only. Re-run with --send to post this order batch.",
+    )
 
 
 def handle_cancel_order(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -578,13 +856,19 @@ def build_markets_parser() -> argparse.ArgumentParser:
         "markets",
         "List active Pascal markets.",
         [
+            "cli markets",
             "cli markets --limit 10",
             "cli markets --query senate --limit 20",
             "cli markets --limit 5 --json",
         ],
     )
     add_env(parser)
-    parser.add_argument("--limit", type=int, default=20, help="Maximum markets to print.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum markets to print. Omit to print all live markets.",
+    )
     parser.add_argument("--query", help="Filter by symbol, event, or market text.")
     parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
     add_json(parser)
@@ -744,6 +1028,38 @@ def build_market_order_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_batch_orders_parser() -> argparse.ArgumentParser:
+    parser = command_parser(
+        "batch-orders",
+        "Build and optionally send signed orders from an unsigned JSON array.",
+        [
+            "cli batch-orders orders.json",
+            "cli batch-orders - < orders.json",
+            'cli batch-orders \'[{"symbol":"ME_SEN_2026.REP","side":"BID",'
+            '"price":"0.450000","size":1}]\'',
+            "cli batch-orders orders.json --base-client-order-id 1783261000000 --send",
+        ],
+    )
+    add_env(parser)
+    parser.add_argument("--send", action="store_true", help="Actually post the write request.")
+    parser.add_argument(
+        "--recv-window-ms",
+        type=int,
+        default=5000,
+        help="Request receive window used for every order signature.",
+    )
+    parser.add_argument(
+        "--base-client-order-id",
+        type=int,
+        help="First generated client_order_id. Defaults to the current millisecond timestamp.",
+    )
+    parser.add_argument(
+        "orders_json",
+        help="Unsigned JSON array, path to a JSON file, or '-' to read the array from stdin.",
+    )
+    return parser
+
+
 def build_cancel_order_parser() -> argparse.ArgumentParser:
     parser = command_parser(
         "cancel-order",
@@ -782,6 +1098,12 @@ COMMANDS: dict[str, Command] = {
         "Dry-run or send a market order.",
         build_market_order_parser,
         handle_market_order,
+        requires_args=True,
+    ),
+    "batch-orders": Command(
+        "Dry-run or send a JSON array of orders.",
+        build_batch_orders_parser,
+        handle_batch_orders,
         requires_args=True,
     ),
     "cancel-order": Command(

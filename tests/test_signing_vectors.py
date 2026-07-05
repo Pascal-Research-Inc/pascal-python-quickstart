@@ -202,3 +202,42 @@ def test_signed_market_order_request_includes_market_type() -> None:
     assert request["type"] == "MARKET"
     assert request["tif"] == "IOC"
     assert request["auth"]["signer"] == TRADING_PUBLIC_KEY
+
+
+def test_allow_missing_replace_sets_signed_flag_and_request_field() -> None:
+    auth = RequestAuthInputs(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        signer_public_key=TRADING_PUBLIC_KEY,
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+
+    message = place_order_message(
+        auth=auth,
+        client_order_id=42,
+        replace_client_order_id=43,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="0.550000",
+        size=10,
+        tif="GTC",
+        allow_missing_replace=True,
+    )
+    request = signed_place_order_request(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        trading_private_key=TRADING_PRIVATE_KEY_HEX,
+        client_order_id=42,
+        replace_client_order_id=43,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="0.550000",
+        size=10,
+        allow_missing_replace=True,
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+
+    assert message[224] == 4
+    assert request["allow_missing_replace"] is True

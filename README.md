@@ -106,22 +106,35 @@ Running `./cli` lists commands. Running a read-only command such as
 to see that command's arguments and examples. Write commands remain dry-run by
 default, print the exact request JSON, and only post when `--send` is present.
 The CLI covers market lists, top of book, open orders, positions, deposit
-addresses, fills/transfers/position-resolution history, PnL, and simple limit
-or market orders. History-like commands print rows by default; pass `--json`
-for the full response.
+addresses, fills/transfers/position-resolution history, PnL, simple limit or
+market orders, and batch order placement from an unsigned JSON array.
+History-like commands print rows by default; pass `--json` for the full
+response.
 
 ```sh
-uv run cli markets --limit 10
-uv run cli book ME_SEN_2026.REP
-uv run cli orders --symbol ME_SEN_2026.REP
-uv run cli positions
-uv run cli deposit-address
-uv run cli history --limit 5
-uv run cli history --kind fills --symbol ME_SEN_2026.REP --limit 25 --json
-uv run cli pnl
-uv run cli limit-order --symbol ME_SEN_2026.REP --side BID --price 0.450000 --size 1
-uv run cli market-order --symbol ME_SEN_2026.REP --side BID --size 1
-uv run cli cancel-order --client-order-id 1783261000000
+./cli markets
+./cli markets --limit 10
+./cli book ME_SEN_2026.REP
+./cli orders --symbol ME_SEN_2026.REP
+./cli positions
+./cli deposit-address
+./cli history --limit 5
+./cli history --kind fills --symbol ME_SEN_2026.REP --limit 25 --json
+./cli pnl
+./cli limit-order --symbol ME_SEN_2026.REP --side BID --price 0.450000 --size 1
+./cli market-order --symbol ME_SEN_2026.REP --side BID --size 1
+./cli batch-orders orders.json
+./cli cancel-order --client-order-id 1783261000000
+```
+
+Batch order input is a JSON array of unsigned order specs. Omit
+`client_order_id` to generate timestamp-based ids:
+
+```json
+[
+  {"symbol": "ME_SEN_2026.REP", "side": "BID", "price": "0.450000", "size": 1},
+  {"type": "MARKET", "symbol": "ME_SEN_2026.REP", "side": "ASK", "size": 1}
+]
 ```
 
 ### More

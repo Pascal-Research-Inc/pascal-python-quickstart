@@ -101,6 +101,7 @@ def place_order_message(
     expires_ts_ms: int | None = None,
     post_only: bool = False,
     reduce_only: bool = False,
+    allow_missing_replace: bool = False,
     order_type: OrderType = "LIMIT",
 ) -> bytes:
     side_value = {"BID": 0, "ASK": 1}[side]
@@ -112,12 +113,16 @@ def place_order_message(
         else OMITTED_REPLACE_CLIENT_ORDER_ID
     )
     expires_value = expires_ts_ms if expires_ts_ms is not None else 0
-    flags = (1 if post_only else 0) | (2 if reduce_only else 0)
+    flags = (
+        (1 if post_only else 0) | (2 if reduce_only else 0) | (4 if allow_missing_replace else 0)
+    )
 
     if tif == "GTT" and expires_ts_ms is None:
         raise ValueError("expires_ts_ms is required for GTT orders")
     if tif != "GTT" and expires_ts_ms is not None:
         raise ValueError("expires_ts_ms is only valid for GTT orders")
+    if allow_missing_replace and replace_client_order_id is None:
+        raise ValueError("allow_missing_replace requires replace_client_order_id")
 
     body = b"".join(
         [
@@ -266,6 +271,7 @@ def signed_place_order_request(
     expires_ts_ms: int | None = None,
     post_only: bool = False,
     reduce_only: bool = False,
+    allow_missing_replace: bool = False,
     order_type: OrderType = "LIMIT",
     client_ts_ms: int | None = None,
     recv_window_ms: int = 5000,
@@ -289,6 +295,7 @@ def signed_place_order_request(
         expires_ts_ms=expires_ts_ms,
         post_only=post_only,
         reduce_only=reduce_only,
+        allow_missing_replace=allow_missing_replace,
         order_type=order_type,
     )
     request: dict[str, Any] = {
@@ -307,6 +314,8 @@ def signed_place_order_request(
         request["post_only"] = True
     if reduce_only:
         request["reduce_only"] = True
+    if allow_missing_replace:
+        request["allow_missing_replace"] = True
     if order_type != "LIMIT":
         request["type"] = order_type
     if expires_ts_ms is not None:
