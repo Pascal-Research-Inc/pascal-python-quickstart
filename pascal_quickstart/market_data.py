@@ -86,6 +86,25 @@ def list_trades(
     return data
 
 
+def _pagination_params(
+    *,
+    limit: int,
+    before_cursor: str | None = None,
+    at_or_before_seq: int | str | None = None,
+) -> dict[str, str]:
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    if before_cursor is not None and at_or_before_seq is not None:
+        raise ValueError("Pass at most one of before_cursor or at_or_before_seq")
+
+    params = {"limit": str(limit)}
+    if before_cursor is not None:
+        params["before_cursor"] = before_cursor
+    if at_or_before_seq is not None:
+        params["at_or_before_seq"] = str(at_or_before_seq)
+    return params
+
+
 def get_account_state(environment: PascalEnvironment, owner_public_key: str) -> dict[str, Any]:
     data = unwrap_envelope(
         get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}"),
@@ -104,6 +123,109 @@ def get_trading_keys(environment: PascalEnvironment, owner_public_key: str) -> l
     if not isinstance(data, list):
         raise TypeError("trading keys response data must be an array")
     return [item for item in data if isinstance(item, dict)]
+
+
+def get_deposit_address(environment: PascalEnvironment, owner_public_key: str) -> dict[str, Any]:
+    data = unwrap_envelope(
+        get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/deposit-address"),
+        context="deposit address",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("deposit address response data must be an object")
+    return data
+
+
+def list_account_fills(
+    environment: PascalEnvironment,
+    owner_public_key: str,
+    *,
+    symbols: list[str] | None = None,
+    limit: int = 50,
+    before_cursor: str | None = None,
+    at_or_before_seq: int | str | None = None,
+) -> dict[str, Any]:
+    if symbols is not None and len(symbols) > 50:
+        raise ValueError("fills supports at most 50 market symbols")
+    params = _pagination_params(
+        limit=limit,
+        before_cursor=before_cursor,
+        at_or_before_seq=at_or_before_seq,
+    )
+    if symbols:
+        params["symbols"] = ",".join(symbols)
+    data = unwrap_envelope(
+        get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/fills", params),
+        context="fill history",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("fill history response data must be an object")
+    if not isinstance(data.get("items"), list):
+        raise TypeError("fill history response missing items array")
+    return data
+
+
+def list_account_transfers(
+    environment: PascalEnvironment,
+    owner_public_key: str,
+    *,
+    limit: int = 50,
+    before_cursor: str | None = None,
+    at_or_before_seq: int | str | None = None,
+) -> dict[str, Any]:
+    params = _pagination_params(
+        limit=limit,
+        before_cursor=before_cursor,
+        at_or_before_seq=at_or_before_seq,
+    )
+    data = unwrap_envelope(
+        get_json(
+            f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/transfers",
+            params,
+        ),
+        context="transfer history",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("transfer history response data must be an object")
+    if not isinstance(data.get("items"), list):
+        raise TypeError("transfer history response missing items array")
+    return data
+
+
+def list_position_resolutions(
+    environment: PascalEnvironment,
+    owner_public_key: str,
+    *,
+    limit: int = 50,
+    before_cursor: str | None = None,
+    at_or_before_seq: int | str | None = None,
+) -> dict[str, Any]:
+    params = _pagination_params(
+        limit=limit,
+        before_cursor=before_cursor,
+        at_or_before_seq=at_or_before_seq,
+    )
+    data = unwrap_envelope(
+        get_json(
+            f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/position-resolutions",
+            params,
+        ),
+        context="position resolution history",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("position resolution history response data must be an object")
+    if not isinstance(data.get("items"), list):
+        raise TypeError("position resolution history response missing items array")
+    return data
+
+
+def get_account_history(environment: PascalEnvironment, owner_public_key: str) -> dict[str, Any]:
+    data = unwrap_envelope(
+        get_json(f"{environment.read_base_url}/api/v1/accounts/{owner_public_key}/history"),
+        context="account history",
+    )
+    if not isinstance(data, dict):
+        raise TypeError("account history response data must be an object")
+    return data
 
 
 def choose_symbol(environment: PascalEnvironment) -> str:

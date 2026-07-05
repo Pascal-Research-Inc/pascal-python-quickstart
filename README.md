@@ -89,6 +89,41 @@ The cancel example uses `123` as the default `client_order_id`, matching the
 place example. You can also pass `--client-order-id` or `--order-id`
 explicitly.
 
+### Agent-Friendly CLI
+
+The repo also includes a small discoverable CLI for agents and operators. From
+the project root, run the committed `./cli` shim or the equivalent
+`uv run cli` project script.
+
+```sh
+./cli
+./cli markets
+./cli limit-order
+```
+
+Running `./cli` lists commands. Running a read-only command such as
+`./cli positions` executes it with `.env` defaults; use `./cli <command> --help`
+to see that command's arguments and examples. Write commands remain dry-run by
+default, print the exact request JSON, and only post when `--send` is present.
+The CLI covers market lists, top of book, open orders, positions, deposit
+addresses, fills/transfers/position-resolution history, PnL, and simple limit
+or market orders. History-like commands print rows by default; pass `--json`
+for the full response.
+
+```sh
+uv run cli markets --limit 10
+uv run cli book ME_SEN_2026.REP
+uv run cli orders --symbol ME_SEN_2026.REP
+uv run cli positions
+uv run cli deposit-address
+uv run cli history --limit 5
+uv run cli history --kind fills --symbol ME_SEN_2026.REP --limit 25 --json
+uv run cli pnl
+uv run cli limit-order --symbol ME_SEN_2026.REP --side BID --price 0.450000 --size 1
+uv run cli market-order --symbol ME_SEN_2026.REP --side BID --size 1
+uv run cli cancel-order --client-order-id 1783261000000
+```
+
 ### More
 
 - See `examples/04_simple_market_maker.py` for a looped market maker.

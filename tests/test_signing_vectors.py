@@ -7,6 +7,7 @@ from pascal_quickstart.signing import (
     create_trading_key_message,
     place_order_message,
     register_deposit_address_message,
+    signed_place_order_request,
     signed_register_deposit_address_request,
 )
 
@@ -180,3 +181,24 @@ def test_signed_register_deposit_address_request_signs_invite_code() -> None:
     assert request["owner"] == OWNER_PUBLIC_KEY
     assert request["invite_code"] == INVITE_CODE
     assert request["auth"]["signature"] == REGISTER_DEPOSIT_ADDRESS_WITH_INVITE_SIGNATURE
+
+
+def test_signed_market_order_request_includes_market_type() -> None:
+    request = signed_place_order_request(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        trading_private_key=TRADING_PRIVATE_KEY_HEX,
+        client_order_id=42,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="1.000000",
+        size=10,
+        tif="IOC",
+        order_type="MARKET",
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+
+    assert request["type"] == "MARKET"
+    assert request["tif"] == "IOC"
+    assert request["auth"]["signer"] == TRADING_PUBLIC_KEY

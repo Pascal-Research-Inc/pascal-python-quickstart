@@ -17,6 +17,8 @@ CancelBy = Literal["client_order_id", "order_id"]
 PERMIT_VERSION = 1
 PLACE_ORDER_CMD_TYPE = 1
 CANCEL_ORDER_CMD_TYPE = 2
+# Use this client metadata byte to attribute orders to the Python client. Feel free to set it to
+# whatever you want if writing your own client. We track this to check what resources are useful.
 PYTHON_CLIENT_METADATA = 2
 CREATE_TRADING_KEY_COMMAND_TYPE = "create_trading_key"
 REGISTER_DEPOSIT_ADDRESS_COMMAND_TYPE = "register_deposit_address"
@@ -264,6 +266,7 @@ def signed_place_order_request(
     expires_ts_ms: int | None = None,
     post_only: bool = False,
     reduce_only: bool = False,
+    order_type: OrderType = "LIMIT",
     client_ts_ms: int | None = None,
     recv_window_ms: int = 5000,
 ) -> dict[str, Any]:
@@ -286,6 +289,7 @@ def signed_place_order_request(
         expires_ts_ms=expires_ts_ms,
         post_only=post_only,
         reduce_only=reduce_only,
+        order_type=order_type,
     )
     request: dict[str, Any] = {
         "client_order_id": str(client_order_id),
@@ -303,6 +307,8 @@ def signed_place_order_request(
         request["post_only"] = True
     if reduce_only:
         request["reduce_only"] = True
+    if order_type != "LIMIT":
+        request["type"] = order_type
     if expires_ts_ms is not None:
         request["expires_ts_ms"] = str(expires_ts_ms)
     request["auth"] = auth_json(auth, sign_message_base58(trading_private_key, message))

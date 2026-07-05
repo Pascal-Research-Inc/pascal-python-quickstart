@@ -62,3 +62,41 @@ def test_list_trades_rejects_two_starting_points() -> None:
             before_cursor="00000000000000737841:0000000000",
             at_or_before_seq=737841,
         )
+
+
+def test_list_account_fills_uses_account_history_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fake_get_json(url: str, params: dict[str, str] | None = None) -> JsonValue:
+        calls.append((url, params))
+        return {
+            "status": "success",
+            "data": {
+                "items": [],
+                "next_cursor": "00000000000000737841:0000000000",
+            },
+        }
+
+    monkeypatch.setattr(market_data, "get_json", fake_get_json)
+
+    page = market_data.list_account_fills(
+        ENVIRONMENT,
+        "owner-pubkey",
+        symbols=["ME_SEN_2026.REP"],
+        limit=5,
+        before_cursor="00000000000000737841:0000000000",
+    )
+
+    assert page["items"] == []
+    assert calls == [
+        (
+            "https://data.example.test/api/v1/accounts/owner-pubkey/fills",
+            {
+                "limit": "5",
+                "before_cursor": "00000000000000737841:0000000000",
+                "symbols": "ME_SEN_2026.REP",
+            },
+        )
+    ]

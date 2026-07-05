@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec uv run python -m pascal_quickstart.cli "$@"
