@@ -16,11 +16,8 @@ def get_server_time(environment: PascalEnvironment) -> dict[str, Any]:
     return data
 
 
-def list_markets(environment: PascalEnvironment, *, strict: bool = True) -> list[dict[str, Any]]:
-    response = get_json(
-        f"{environment.read_base_url}/api/v1/markets",
-        {"strict": "true" if strict else "false"},
-    )
+def list_markets(environment: PascalEnvironment) -> list[dict[str, Any]]:
+    response = get_json(f"{environment.read_base_url}/api/v1/markets")
     data = unwrap_envelope(response, context="markets")
     if not isinstance(data, list):
         raise TypeError("markets response data must be an array")

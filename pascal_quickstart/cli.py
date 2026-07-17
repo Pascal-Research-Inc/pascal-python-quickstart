@@ -213,7 +213,7 @@ def handle_markets(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--limit must be at least 1")
     try:
         config = load_config(args.env, require_keys=False)
-        markets = list_markets(config.environment, strict=args.strict)
+        markets = list_markets(config.environment)
     except ValueError as exc:
         parser.error(str(exc))
     if args.query:
@@ -947,7 +947,6 @@ def build_markets_parser() -> argparse.ArgumentParser:
         help="Maximum markets to print. Omit to print all live markets.",
     )
     parser.add_argument("--query", help="Filter by symbol, event, or market text.")
-    parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
     add_json(parser)
     return parser
 

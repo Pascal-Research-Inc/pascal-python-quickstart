@@ -21,9 +21,7 @@ def test_markets_prints_all_markets_when_limit_is_omitted(
     def fake_load_config(env_name: str | None = None, *, require_keys: bool = True) -> PascalConfig:
         return PascalConfig(ENVIRONMENT, "", "")
 
-    def fake_list_markets(
-        environment: PascalEnvironment, *, strict: bool = True
-    ) -> list[dict[str, object]]:
+    def fake_list_markets(environment: PascalEnvironment) -> list[dict[str, object]]:
         return [{"symbol": f"MARKET_{number}"} for number in range(25)]
 
     monkeypatch.setattr(cli, "load_config", fake_load_config)
@@ -46,9 +44,7 @@ def test_markets_limit_caps_printed_markets(
     def fake_load_config(env_name: str | None = None, *, require_keys: bool = True) -> PascalConfig:
         return PascalConfig(ENVIRONMENT, "", "")
 
-    def fake_list_markets(
-        environment: PascalEnvironment, *, strict: bool = True
-    ) -> list[dict[str, object]]:
+    def fake_list_markets(environment: PascalEnvironment) -> list[dict[str, object]]:
         return [{"symbol": f"MARKET_{number}"} for number in range(25)]
 
     monkeypatch.setattr(cli, "load_config", fake_load_config)
