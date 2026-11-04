@@ -25,8 +25,14 @@ def main() -> None:
     parser.add_argument("--expires-ts-ms", type=int)
     parser.add_argument("--post-only", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--reduce-only", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--builder-pubkey", help="Registered builder account's wallet public key.")
+    parser.add_argument(
+        "--builder-fee-rate", help="Decimal rate, e.g. 0.010000 for 1%%. Requires --builder-pubkey."
+    )
     parser.add_argument("--recv-window-ms", type=int, default=5000)
     args = parser.parse_args()
+    if (args.builder_pubkey is None) != (args.builder_fee_rate is None):
+        parser.error("--builder-pubkey and --builder-fee-rate must be provided together")
 
     config = load_config(args.env)
     symbol = args.symbol or choose_symbol(config.environment)
@@ -46,6 +52,8 @@ def main() -> None:
         expires_ts_ms=args.expires_ts_ms,
         post_only=args.post_only,
         reduce_only=args.reduce_only,
+        builder_pubkey=args.builder_pubkey,
+        builder_fee_rate=args.builder_fee_rate,
         recv_window_ms=args.recv_window_ms,
     )
     body = [request]

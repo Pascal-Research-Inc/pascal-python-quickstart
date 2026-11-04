@@ -89,6 +89,45 @@ The cancel example uses `123` as the default `client_order_id`, matching the
 place example. You can also pass `--client-order-id` or `--order-id`
 explicitly.
 
+### Orders With Builder Codes
+
+The same order example can attach a builder fee. Set `BUILDER_PUBKEY` to the
+builder account's wallet public key, not its trading key. The builder must be a
+registered Pascal account other than the trader's own account and must have at
+least $100 of free collateral when the order is placed.
+
+```sh
+export BUILDER_PUBKEY="YOUR_BUILDER_WALLET_PUBLIC_KEY"
+uv run python examples/02_place_order.py \
+  --symbol ME_SEN_2026.REP --side BID --price 0.500000 --size 100 \
+  --builder-pubkey "$BUILDER_PUBKEY" --builder-fee-rate 0.010000
+```
+
+This prints a signed request without sending it. Add `--send` only when you are
+ready to place the order. If all 100 contracts fill at $0.50, the 1% builder
+rate pays the builder `100 * 0.50 * (1 - 0.50) * 0.01 = $0.25`, in addition to
+any venue fees. Rates are decimal strings, not percentages: `0.010000` is 1%,
+and the maximum rate is `0.100000` (10%).
+
+In Python, pass `builder_pubkey` and `builder_fee_rate` together to
+`signed_place_order_request()` (or `place_order_message()` for raw permit
+bytes). The request helper adds:
+
+```json
+{
+  "builder_info": {
+    "builder_pubkey": "<builder-wallet-public-key>",
+    "builder_fee_rate": "0.010000"
+  }
+}
+```
+
+Both fields are included in the signed permit, so do not append or change
+`builder_info` after signing. No separate builder approval signature is needed.
+Omit both arguments for orders without a builder. To stop paying a builder on
+future fills, cancel any open orders naming it and omit the builder on new
+orders. See the [builder code rules](https://docs.pascal.trade/#builder-codes).
+
 ### Agent-Friendly CLI
 
 The repo also includes a small discoverable CLI for agents and operators. From

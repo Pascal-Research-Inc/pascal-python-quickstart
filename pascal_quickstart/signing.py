@@ -56,6 +56,19 @@ def price_to_micro_dollars(price: str) -> int:
     return value
 
 
+def builder_fee_rate_to_ppm(builder_fee_rate: str) -> int:
+    try:
+        decimal = Decimal(builder_fee_rate)
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid decimal builder fee rate {builder_fee_rate!r}") from exc
+
+    if not decimal.is_finite() or not Decimal(0) <= decimal <= Decimal("0.1"):
+        raise ValueError("Builder fee rate must be between 0.000000 and 0.100000 (10%)")
+    if decimal != decimal.quantize(Decimal("0.000001")):
+        raise ValueError("Builder fee rate must have at most 6 fractional digits")
+    return int(decimal * Decimal(1_000_000))
+
+
 def fixed_symbol_bytes(symbol: str) -> bytes:
     encoded = symbol.encode("ascii")
     if len(encoded) > 32:
@@ -103,6 +116,8 @@ def place_order_message(
     reduce_only: bool = False,
     allow_missing_replace: bool = False,
     order_type: OrderType = "LIMIT",
+    builder_pubkey: str | None = None,
+    builder_fee_rate: str | None = None,
 ) -> bytes:
     side_value = {"BID": 0, "ASK": 1}[side]
     tif_value = {"GTC": 0, "GTT": 1, "IOC": 2}[tif]
@@ -124,6 +139,16 @@ def place_order_message(
     if allow_missing_replace and replace_client_order_id is None:
         raise ValueError("allow_missing_replace requires replace_client_order_id")
 
+    if (builder_pubkey is None) != (builder_fee_rate is None):
+        raise ValueError("builder_pubkey and builder_fee_rate must be provided together")
+    builder = b"\x00" * 32
+    builder_fee_ppm = 0
+    if builder_pubkey is not None and builder_fee_rate is not None:
+        builder = b58decode(builder_pubkey)
+        if len(builder) != 32 or builder == b"\x00" * 32:
+            raise ValueError("Builder public key must decode to 32 bytes and must not be zero")
+        builder_fee_ppm = builder_fee_rate_to_ppm(builder_fee_rate)
+
     body = b"".join(
         [
             struct.pack(
@@ -134,9 +159,9 @@ def place_order_message(
                 replace_value,
                 expires_value,
             ),
-            b"\x00" * 32,
+            builder,
             fixed_symbol_bytes(symbol),
-            b"\x00" * 4,
+            struct.pack("<i", builder_fee_ppm),
             PLACE_ORDER_OFFCHAIN_FIELDS_DIGEST,
             struct.pack("<B", PYTHON_CLIENT_METADATA),
             struct.pack("<BBBB", side_value, order_type_value, tif_value, flags),
@@ -273,6 +298,8 @@ def signed_place_order_request(
     reduce_only: bool = False,
     allow_missing_replace: bool = False,
     order_type: OrderType = "LIMIT",
+    builder_pubkey: str | None = None,
+    builder_fee_rate: str | None = None,
     client_ts_ms: int | None = None,
     recv_window_ms: int = 5000,
 ) -> dict[str, Any]:
@@ -297,6 +324,8 @@ def signed_place_order_request(
         reduce_only=reduce_only,
         allow_missing_replace=allow_missing_replace,
         order_type=order_type,
+        builder_pubkey=builder_pubkey,
+        builder_fee_rate=builder_fee_rate,
     )
     request: dict[str, Any] = {
         "client_order_id": str(client_order_id),
@@ -320,6 +349,11 @@ def signed_place_order_request(
         request["type"] = order_type
     if expires_ts_ms is not None:
         request["expires_ts_ms"] = str(expires_ts_ms)
+    if builder_pubkey is not None and builder_fee_rate is not None:
+        request["builder_info"] = {
+            "builder_pubkey": builder_pubkey,
+            "builder_fee_rate": format(Decimal(builder_fee_rate), ".6f"),
+        }
     request["auth"] = auth_json(auth, sign_message_base58(trading_private_key, message))
     return request
 
