@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from pascal_quickstart.crypto import public_key_from_private_key, sign_message_base58
 from pascal_quickstart.signing import (
     RequestAuthInputs,
+    builder_fee_rate_to_ppm,
     cancel_order_message,
     create_trading_key_message,
     place_order_message,
@@ -27,6 +30,21 @@ PLACE_ORDER_MESSAGE_HEX = (
 )
 PLACE_ORDER_SIGNATURE = (
     "3uG7HnnR2j3R26LoW3VNSJzKUfs16M9kXc58JbhkACwm2KmBXQuozLCQvREuAoxuHQjzADdBTV7NkgNrqRANgaZN"
+)
+# Builder wallet public key derived from the test seed [9; 32].
+BUILDER_PUBLIC_KEY = "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf"
+PLACE_ORDER_WITH_BUILDER_MESSAGE_HEX = (
+    "01010300881300000094962793010000"
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
+    "0a0000000000000070640800000000002a000000000000002b00000000000000"
+    "8082cd2793010000fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed"
+    "702eac835e9f61853494d5f4556454e545f312e4d41524b45545f310000000000"
+    "0000000000000010270000dcaf53738f1d5f06164660498a75888e7f0c78ed"
+    "5f1bc17be1dd1cb3ccf53ce3020000010300000000000000"
+)
+PLACE_ORDER_WITH_BUILDER_SIGNATURE = (
+    "2jsmMEct5WwmYHd1V8syLLTmxrLDVRChBScHnQpM48aNuqKvyqWt55pUWocTZiiogJm3SEQkLKzJDEvuUDh1eiEH"
 )
 CANCEL_ORDER_MESSAGE_HEX = (
     "01020300881300000094962793010000"
@@ -73,7 +91,25 @@ def test_public_key_derivation_matches_docs_vectors() -> None:
     assert public_key_from_private_key(TRADING_PRIVATE_KEY_HEX) == TRADING_PUBLIC_KEY
 
 
-def test_place_order_signing_vector() -> None:
+@pytest.mark.parametrize(
+    ("builder_pubkey", "builder_fee_rate", "message_hex", "signature"),
+    [
+        (None, None, PLACE_ORDER_MESSAGE_HEX, PLACE_ORDER_SIGNATURE),
+        (
+            BUILDER_PUBLIC_KEY,
+            "0.010000",
+            PLACE_ORDER_WITH_BUILDER_MESSAGE_HEX,
+            PLACE_ORDER_WITH_BUILDER_SIGNATURE,
+        ),
+    ],
+    ids=["no-builder", "with-builder"],
+)
+def test_place_order_signing_vector(
+    builder_pubkey: str | None,
+    builder_fee_rate: str | None,
+    message_hex: str,
+    signature: str,
+) -> None:
     auth = RequestAuthInputs(
         deployment_id=3,
         owner_public_key=OWNER_PUBLIC_KEY,
@@ -94,10 +130,145 @@ def test_place_order_signing_vector() -> None:
         post_only=True,
         reduce_only=True,
         expires_ts_ms=1731539600000,
+        builder_pubkey=builder_pubkey,
+        builder_fee_rate=builder_fee_rate,
     )
 
-    assert message.hex() == PLACE_ORDER_MESSAGE_HEX
-    assert sign_message_base58(TRADING_PRIVATE_KEY_HEX, message) == PLACE_ORDER_SIGNATURE
+    assert len(message) == 232
+    assert message.hex() == message_hex
+    assert sign_message_base58(TRADING_PRIVATE_KEY_HEX, message) == signature
+
+    request = signed_place_order_request(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        trading_private_key=TRADING_PRIVATE_KEY_HEX,
+        client_ts_ms=1731536000000,
+        client_order_id=42,
+        replace_client_order_id=43,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="0.550000",
+        size=10,
+        tif="GTT",
+        post_only=True,
+        reduce_only=True,
+        expires_ts_ms=1731539600000,
+        builder_pubkey=builder_pubkey,
+        builder_fee_rate=builder_fee_rate,
+    )
+    assert request["auth"]["signature"] == signature
+    if builder_pubkey is None:
+        assert "builder_info" not in request
+    else:
+        assert request["builder_info"] == {
+            "builder_pubkey": builder_pubkey,
+            "builder_fee_rate": builder_fee_rate,
+        }
+
+
+@pytest.mark.parametrize(
+    ("rate", "ppm"),
+    [("0", 0), ("0.000001", 1), ("0.01", 10_000), ("0.100000", 100_000)],
+)
+def test_builder_fee_rate_to_ppm(rate: str, ppm: int) -> None:
+    assert builder_fee_rate_to_ppm(rate) == ppm
+
+
+@pytest.mark.parametrize(
+    "rate",
+    [
+        "-0.000001",
+        "0.100001",
+        "1",
+        "0.0100001",
+        "0.0100000000000000000000000000001",
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "",
+        "not-a-rate",
+    ],
+)
+def test_builder_fee_rate_rejects_invalid_values(rate: str) -> None:
+    with pytest.raises(ValueError):
+        builder_fee_rate_to_ppm(rate)
+
+
+@pytest.mark.parametrize(
+    ("builder_pubkey", "builder_fee_rate"),
+    [
+        (BUILDER_PUBLIC_KEY, None),
+        (None, "0.010000"),
+        ("invalid!", "0.010000"),
+        ("1" * 31, "0.010000"),
+        ("1" * 32, "0.010000"),
+        ("1" * 33, "0.010000"),
+        (BUILDER_PUBLIC_KEY, "0.100001"),
+    ],
+)
+def test_signed_place_order_rejects_invalid_builder_fields(
+    builder_pubkey: str | None, builder_fee_rate: str | None
+) -> None:
+    with pytest.raises(ValueError):
+        signed_place_order_request(
+            deployment_id=3,
+            owner_public_key=OWNER_PUBLIC_KEY,
+            trading_private_key=TRADING_PRIVATE_KEY_HEX,
+            client_order_id=42,
+            symbol="SIM_EVENT_1.MARKET_1",
+            side="BID",
+            price="0.550000",
+            size=10,
+            builder_pubkey=builder_pubkey,
+            builder_fee_rate=builder_fee_rate,
+        )
+
+
+@pytest.mark.parametrize(
+    ("rate", "json_rate"),
+    [
+        ("0", "0.000000"),
+        ("0.000001", "0.000001"),
+        ("0.01", "0.010000"),
+        ("1e-2", "0.010000"),
+        ("0.100000", "0.100000"),
+    ],
+)
+def test_builder_fields_match_the_signed_permit(rate: str, json_rate: str) -> None:
+    request = signed_place_order_request(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        trading_private_key=TRADING_PRIVATE_KEY_HEX,
+        client_ts_ms=1731536000000,
+        client_order_id=42,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="0.550000",
+        size=10,
+        builder_pubkey=BUILDER_PUBLIC_KEY,
+        builder_fee_rate=rate,
+    )
+    builder_info = request["builder_info"]
+    auth = RequestAuthInputs(
+        deployment_id=3,
+        owner_public_key=OWNER_PUBLIC_KEY,
+        signer_public_key=TRADING_PUBLIC_KEY,
+        client_ts_ms=1731536000000,
+        recv_window_ms=5000,
+    )
+    message = place_order_message(
+        auth=auth,
+        client_order_id=42,
+        symbol="SIM_EVENT_1.MARKET_1",
+        side="BID",
+        price="0.550000",
+        size=10,
+        builder_pubkey=builder_info["builder_pubkey"],
+        builder_fee_rate=builder_info["builder_fee_rate"],
+    )
+    assert builder_info["builder_fee_rate"] == json_rate
+    assert int.from_bytes(message[184:188], "little", signed=True) == builder_fee_rate_to_ppm(rate)
+    assert request["auth"]["signature"] == sign_message_base58(TRADING_PRIVATE_KEY_HEX, message)
 
 
 def test_cancel_order_signing_vector() -> None:
